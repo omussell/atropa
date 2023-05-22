@@ -1,0 +1,44 @@
+version: '3'
+services:
+  pebble:
+    image: docker.io/letsencrypt/pebble:latest
+    command: pebble -config /test/config/pebble-config.json -strict false -dnsserver 10.30.50.3:8053
+    ports:
+      - 14000:14000  # HTTPS ACME API
+      - 15000:15000  # HTTPS Management API
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.2
+  challtestsrv:
+    image: docker.io/letsencrypt/pebble-challtestsrv:latest
+    command: pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 10.30.50.3
+    ports:
+      - 8055:8055  # HTTP Management API
+      - 8053:8053  # DNS server
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.3
+  testing_http:
+    image: docker.io/curlimages/curl
+    command: curl -d '{"host":"test-host.matrix", "addresses":["12.12.12.12", "13.13.13.13"]}' http://10.30.50.3:8055/add-a
+    depends_on:
+      - challtestsrv
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.4
+  testing_certbot:
+    image: docker.io/certbot/certbot
+    command: certonly --standalone -d test-host.matrix --server https://10.30.50.2:14000/dir --email you@example.com --agree-tos --no-verify-ssl
+    depends_on:
+      - challtestsrv
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.4
+
+networks:
+  acmenet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.30.50.0/24
